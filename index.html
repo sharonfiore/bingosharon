@@ -1,0 +1,339 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>¡Bingo Rompehielos Interactivo!</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <style>
+    body {
+      background-color: #f4f7f6;
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    }
+    .bingo-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 8px;
+      margin-top: 15px;
+    }
+    .bingo-cell {
+      aspect-ratio: 1 / 1;
+      background-color: #ffffff;
+      border: 2px solid #dee2e6;
+      border-radius: 8px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      align-items: center;
+      padding: 6px;
+      text-align: center;
+      font-size: 0.72rem;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      overflow: hidden;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.02);
+    }
+    @media (max-width: 400px) {
+      .bingo-cell {
+        font-size: 0.65rem;
+        padding: 4px;
+      }
+    }
+    .bingo-cell:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 4px 8px rgba(0,0,0,0.08);
+      border-color: #0d6efd;
+    }
+    .bingo-cell.filled {
+      background-color: #d1e7dd;
+      border-color: #a3cfbb;
+      color: #0f5132;
+    }
+    .friend-name {
+      font-weight: bold;
+      color: #0d6efd;
+      margin-top: 4px;
+      font-size: 0.75rem;
+      word-break: break-word;
+    }
+    .bingo-cell.filled .friend-name {
+      color: #146c43;
+    }
+    .leaderboard-table th {
+      background-color: #198754;
+      color: white;
+    }
+    .pulse-live {
+      width: 8px;
+      height: 8px;
+      background-color: #dc3545;
+      border-radius: 50%;
+      display: inline-block;
+      animation: blink 1.5s infinite;
+      margin-right: 5px;
+    }
+    @keyframes blink {
+      0% { opacity: 0.2; }
+      50% { opacity: 1; }
+      100% { opacity: 0.2; }
+    }
+  </style>
+</head>
+<body>
+
+  <div class="container py-4 col-md-6 offset-md-3">
+    <div class="card shadow-sm p-4 text-center mb-4">
+      <h2 class="text-primary fw-bold mb-1">🎲 Bingo de Integración</h2>
+      <p class="text-muted small">¡Completa los 16 casilleros con nombres de tus amigos para ganar!</p>
+      
+      <div id="login-section">
+        <div class="mb-3 mt-2">
+          <input type="text" id="player-name" class="form-control form-control-lg text-center" placeholder="Escribe tu nombre (Ej: Sharon, Rocío)" autocomplete="off">
+        </div>
+        <button id="btn-start" class="btn btn-primary btn-lg w-100 fw-bold">Generar mi Cartilla al Azar</button>
+      </div>
+
+      <div id="loading-status" class="spinner-border text-primary my-3 d-none" role="status"></div>
+
+      <div id="game-section" class="d-none">
+        <div class="alert alert-info py-2 mb-2 small fw-bold">
+          Jugador(a): <span id="display-player" class="text-dark text-capitalize"></span>
+        </div>
+        <div class="bingo-grid" id="bingo-board"></div>
+        <div class="mt-3 text-muted tiny">* Haz clic en cualquier recuadro para escribir el nombre de quién cumple la condición.</div>
+      </div>
+    </div>
+
+    <div class="card shadow-sm p-4">
+      <h4 class="fw-bold mb-1 text-secondary text-center">🏆 Tabla de Posiciones</h4>
+      <div class="text-center text-muted small mb-3"><span class="pulse-live"></span>En vivo (se actualiza automáticamente)</div>
+      <div class="table-responsive">
+        <table class="table table-striped text-center align-middle leaderboard-table">
+          <thead>
+            <tr>
+              <th style="width: 25%">Puesto</th>
+              <th>Nombre del Ganador</th>
+              <th>Hora Exacta</th>
+            </tr>
+          </thead>
+          <tbody id="leaderboard-body">
+            <tr>
+              <td colspan="3" class="text-muted small">Nadie ha completado el bingo aún. ¡Sé el primero!</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal fade" id="cellModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-sm">
+      <div class="modal-content">
+        <div class="modal-header py-2 bg-light">
+          <h6 class="modal-title fw-bold">¿Quién cumple este requisito?</h6>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body">
+          <p id="modal-consigna-text" class="small text-center fw-medium mb-3"></p>
+          <input type="text" id="modal-friend-name" class="form-control text-center" placeholder="Nombre de tu amigo" autocomplete="off">
+        </div>
+        <div class="modal-footer py-1">
+          <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancelar</button>
+          <button type="button" id="btn-save-cell" class="btn btn-primary btn-sm px-3">Guardar</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+
+  <script>
+    // =========================================================
+    // CONFIGURACIÓN: REEMPLAZA CON TU URL DE GOOGLE APPS SCRIPT
+    // =========================================================
+    const APPS_SCRIPT_URL = "TU_URL_DE_APPS_SCRIPT_AQUÍ";
+
+    let allConsignas = [];
+    let selectedBoardData = [];
+    let currentPlayerName = "";
+    let activeCellIndex = null;
+    let hasWon = false; // Evita registrar la victoria más de una vez
+    
+    // Elementos del DOM
+    const loginSection = document.getElementById("login-section");
+    const gameSection = document.getElementById("game-section");
+    const loadingStatus = document.getElementById("loading-status");
+    const bingoBoard = document.getElementById("bingo-board");
+    const playerNameInput = document.getElementById("player-name");
+    const displayPlayer = document.getElementById("display-player");
+    const leaderboardBody = document.getElementById("leaderboard-body");
+    
+    const cellModal = new bootstrap.Modal(document.getElementById('cellModal'));
+    const modalConsignaText = document.getElementById("modal-consigna-text");
+    const modalFriendName = document.getElementById("modal-friend-name");
+
+    // Al abrir la app, cargar el Leaderboard inicial
+    window.addEventListener("DOMContentLoaded", () => {
+      fetchLeaderboard();
+      // ¡AQUÍ ESTÁ LA MAGIA!: Revisa el Leaderboard automáticamente cada 4 segundos
+      setInterval(fetchLeaderboard, 4000);
+    });
+
+    // Evento iniciar Juego
+    document.getElementById("btn-start").addEventListener("click", async () => {
+      const name = playerNameInput.value.trim();
+      if (!name) {
+        alert("Por favor, introduce tu nombre para asignar tu cartilla.");
+        return;
+      }
+      currentPlayerName = name;
+      
+      toggleLoading(true);
+      await loadBingoEngine();
+    });
+
+    // Motor para jalar las consignas desde Google Sheet
+    async function loadBingoEngine() {
+      try {
+        const response = await fetch(`${APPS_SCRIPT_URL}?action=getConsignas`);
+        const json = await response.json();
+        
+        if (json.status === "success") {
+          allConsignas = json.data;
+          generateRandomBoard();
+          renderBoard();
+          
+          displayPlayer.textContent = currentPlayerName;
+          loginSection.classList.add("d-none");
+          gameSection.classList.remove("d-none");
+        } else {
+          alert("Error desde el servidor: " + json.message);
+        }
+      } catch (error) {
+        console.error(error);
+        alert("Error de conexión. Verifica que hayas publicado el Apps Script como 'Cualquiera'.");
+      } finally {
+        toggleLoading(false);
+      }
+    }
+
+    // Seleccionar 16 consignas aleatorias sin repetir (Matriz 4x4)
+    function generateRandomBoard() {
+      let shuffled = [...allConsignas].sort(() => 0.5 - Math.random());
+      let selected = shuffled.slice(0, 16);
+      
+      selectedBoardData = selected.map(consigna => {
+        return { text: consigna, filledBy: "" };
+      });
+    }
+
+    // Dibujar la cuadrícula en la pantalla del celular
+    function renderBoard() {
+      bingoBoard.innerHTML = "";
+      selectedBoardData.forEach((cell, index) => {
+        const cellDiv = document.createElement("div");
+        cellDiv.className = `bingo-cell ${cell.filledBy ? 'filled' : ''}`;
+        cellDiv.innerHTML = `
+          <div>${cell.text}</div>
+          <div class="friend-name">${cell.filledBy || '?'}</div>
+        `;
+        
+        cellDiv.addEventListener("click", () => openCellEditor(index));
+        bingoBoard.appendChild(cellDiv);
+      });
+    }
+
+    // Abrir Modal para asignar amigo a la condición
+    function openCellEditor(index) {
+      activeCellIndex = index;
+      modalConsignaText.textContent = selectedBoardData[index].text;
+      modalFriendName.value = selectedBoardData[index].filledBy;
+      cellModal.show();
+      setTimeout(() => modalFriendName.focus(), 500);
+    }
+
+    // Guardar el nombre en la celda local y verificar victoria
+    document.getElementById("btn-save-cell").addEventListener("click", () => {
+      const name = modalFriendName.value.trim();
+      selectedBoardData[activeCellIndex].filledBy = name;
+      cellModal.hide();
+      renderBoard();
+      checkBingoWinCondition();
+    });
+
+    // Validar si todos los bloques están llenos
+    async function checkBingoWinCondition() {
+      const isComplete = selectedBoardData.every(cell => cell.filledBy !== "");
+      if (isComplete && !hasWon) {
+        hasWon = true; // Bloquea para que no mande doble registro
+        alert("🎉 ¡BINGO! Has completado todo tu tablero. Registrando tu puesto en la nube...");
+        toggleLoading(true);
+        try {
+          // Registra el nombre en el Excel en la siguiente fila disponible
+          const response = await fetch(`${APPS_SCRIPT_URL}?action=registerWin&name=${encodeURIComponent(currentPlayerName)}`);
+          const json = await response.json();
+          if (json.status === "success") {
+            updateLeaderboardDOM(json.leaderboard);
+          }
+        } catch (error) {
+          console.error("Error al registrar victoria:", error);
+        } finally {
+          toggleLoading(false);
+        }
+      }
+    }
+
+    // Traer datos del Leaderboard de Google Sheets
+    async function fetchLeaderboard() {
+      try {
+        const response = await fetch(`${APPS_SCRIPT_URL}?action=getLeaderboard`);
+        const json = await response.json();
+        if (json.status === "success") {
+          updateLeaderboardDOM(json.leaderboard);
+        }
+      } catch (e) {
+        // Falla silenciosa en segundo plano para no interrumpir la experiencia de juego
+        console.log("Error consultando ranking en segundo plano.");
+      }
+    }
+
+    // Actualizar la tabla visual de ganadores (Calcula los puestos dinámicamente)
+    function updateLeaderboardDOM(list) {
+      if (!list || list.length === 0) {
+        leaderboardBody.innerHTML = `<tr><td colspan="3" class="text-muted small">Nadie ha completado el bingo aún. ¡Sé el primero!</td></tr>`;
+        return;
+      }
+      
+      leaderboardBody.innerHTML = "";
+      list.forEach((item, index) => {
+        let puestoText = "";
+        
+        // Asignar medallas decorativas al top 3, y texto normal al resto
+        if (index === 0) puestoText = "🥇 1er Lugar";
+        else if (index === 1) puestoText = "🥈 2do Lugar";
+        else if (index === 2) puestoText = "🥉 3er Lugar";
+        else puestoText = `${index + 1}° Lugar`;
+        
+        const row = document.createElement("tr");
+        // Si el ganador es el usuario actual, resaltar la fila de verde suave
+        if (item.name.toLowerCase() === currentPlayerName.toLowerCase()) {
+          row.className = "table-success fw-bold";
+        }
+        
+        row.innerHTML = `
+          <td><span class="badge ${index < 3 ? 'bg-warning text-dark' : 'bg-secondary'} px-2 py-1">${puestoText}</span></td>
+          <td class="fw-semibold text-capitalize">${item.name}</td>
+          <td class="small text-muted">${item.time}</td>
+        `;
+        leaderboardBody.appendChild(row);
+      });
+    }
+
+    function toggleLoading(show) {
+      if (show) loadingStatus.classList.remove("d-none");
+      else loadingStatus.classList.add("d-none");
+    }
+  </script>
+</body>
+</html>
